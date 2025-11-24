@@ -10,6 +10,7 @@
 	let selectedCategories = new Set();
 	let searchQuery = '';
 	let currentPage = 1;
+	let isInitialLoad = true;
 	const ITEMS_PER_PAGE = 9;
 
 	const cache = window.SZ?.cache?.createCache('quran-dict');
@@ -96,6 +97,7 @@
 		loadingState.classList.add('hidden');
 		initializeDarkMode();
 		renderCategoryFilters();
+		parseURLParams();
 		applyFilters();
 		setupEventListeners();
 	}
@@ -135,6 +137,67 @@
 			sunIcon.classList.remove('hidden');
 			moonIcon.classList.add('hidden');
 		}
+	}
+
+	/**
+	 * Parse URL parameters and apply them to filters
+	 */
+	function parseURLParams() {
+		const params = new URLSearchParams(window.location.search);
+		
+		// Get search query from URL
+		const urlQuery = params.get('q') || params.get('search');
+		if (urlQuery) {
+			searchQuery = urlQuery;
+			searchInput.value = urlQuery;
+		}
+		
+		// Get categories from URL (comma-separated)
+		const urlCategories = params.get('category') || params.get('categories');
+		if (urlCategories) {
+			selectedCategories = new Set(urlCategories.split(',').filter(Boolean));
+			// Update badge states
+			document.querySelectorAll('[data-category]').forEach(badge => {
+				const category = badge.getAttribute('data-category');
+				if (selectedCategories.has(category)) {
+					badge.classList.add('active');
+				}
+			});
+		}
+		
+		// Get page number from URL
+		const urlPage = params.get('page');
+		if (urlPage) {
+			const pageNum = parseInt(urlPage, 10);
+			if (pageNum > 0) {
+				currentPage = pageNum;
+			}
+		}
+	}
+
+	/**
+	 * Update URL with current filter state
+	 */
+	function updateURL() {
+		const params = new URLSearchParams();
+		
+		if (searchQuery.trim()) {
+			params.set('q', searchQuery.trim());
+		}
+		
+		if (selectedCategories.size > 0) {
+			params.set('category', Array.from(selectedCategories).join(','));
+		}
+		
+		if (currentPage > 1) {
+			params.set('page', currentPage.toString());
+		}
+		
+		const newURL = params.toString() 
+			? `${window.location.pathname}?${params.toString()}`
+			: window.location.pathname;
+		
+		window.history.pushState({}, '', newURL);
 	}
 
 	/**
@@ -220,9 +283,20 @@
 			return searchableText.includes(normalizedQuery);
 		});
 
-		// Reset to first page when filters change
-		currentPage = 1;
+		// Reset to first page when filters change (but preserve page on initial load from URL)
+		if (isInitialLoad) {
+			// On initial load, check if page is set in URL
+			const params = new URLSearchParams(window.location.search);
+			if (!params.get('page')) {
+				currentPage = 1;
+			}
+			isInitialLoad = false;
+		} else {
+			// On subsequent filter changes, always reset to page 1
+			currentPage = 1;
+		}
 		renderResults();
+		updateURL();
 	}
 
 	/**
@@ -348,6 +422,7 @@
 			if (currentPage > 1) {
 				currentPage--;
 				renderResults();
+				updateURL();
 				window.scrollTo({ top: 0, behavior: 'smooth' });
 			}
 		});
@@ -369,6 +444,7 @@
 			firstPage.addEventListener('click', () => {
 				currentPage = 1;
 				renderResults();
+				updateURL();
 				window.scrollTo({ top: 0, behavior: 'smooth' });
 			});
 			pagination.appendChild(firstPage);
@@ -391,6 +467,7 @@
 			pageButton.addEventListener('click', () => {
 				currentPage = i;
 				renderResults();
+				updateURL();
 				window.scrollTo({ top: 0, behavior: 'smooth' });
 			});
 			pagination.appendChild(pageButton);
@@ -410,6 +487,7 @@
 			lastPage.addEventListener('click', () => {
 				currentPage = totalPages;
 				renderResults();
+				updateURL();
 				window.scrollTo({ top: 0, behavior: 'smooth' });
 			});
 			pagination.appendChild(lastPage);
@@ -426,6 +504,7 @@
 			if (currentPage < totalPages) {
 				currentPage++;
 				renderResults();
+				updateURL();
 				window.scrollTo({ top: 0, behavior: 'smooth' });
 			}
 		});
@@ -448,6 +527,12 @@
 		if (darkModeToggle) {
 			darkModeToggle.addEventListener('click', toggleDarkMode);
 		}
+
+		// Handle browser back/forward navigation
+		window.addEventListener('popstate', () => {
+			parseURLParams();
+			applyFilters();
+		});
 	}
 
 	// Initialize on DOM ready
