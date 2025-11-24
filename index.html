@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Quran Dictionary</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<style>
+		@layer base {
+			:root {
+				--background: 0 0% 100%;
+				--foreground: 222.2 84% 4.9%;
+				--card: 0 0% 100%;
+				--card-foreground: 222.2 84% 4.9%;
+				--popover: 0 0% 100%;
+				--popover-foreground: 222.2 84% 4.9%;
+				--primary: 222.2 47.4% 11.2%;
+				--primary-foreground: 210 40% 98%;
+				--secondary: 210 40% 96.1%;
+				--secondary-foreground: 222.2 47.4% 11.2%;
+				--muted: 210 40% 96.1%;
+				--muted-foreground: 215.4 16.3% 46.9%;
+				--accent: 210 40% 96.1%;
+				--accent-foreground: 222.2 47.4% 11.2%;
+				--destructive: 0 84.2% 60.2%;
+				--destructive-foreground: 210 40% 98%;
+				--border: 214.3 31.8% 91.4%;
+				--input: 214.3 31.8% 91.4%;
+				--ring: 222.2 84% 4.9%;
+				--radius: 0.5rem;
+			}
+
+			.dark {
+				--background: 222.2 84% 4.9%;
+				--foreground: 210 40% 98%;
+				--card: 222.2 84% 4.9%;
+				--card-foreground: 210 40% 98%;
+				--popover: 222.2 84% 4.9%;
+				--popover-foreground: 210 40% 98%;
+				--primary: 210 40% 98%;
+				--primary-foreground: 222.2 47.4% 11.2%;
+				--secondary: 217.2 32.6% 17.5%;
+				--secondary-foreground: 210 40% 98%;
+				--muted: 217.2 32.6% 17.5%;
+				--muted-foreground: 215 20.2% 65.1%;
+				--accent: 217.2 32.6% 17.5%;
+				--accent-foreground: 210 40% 98%;
+				--destructive: 0 62.8% 30.6%;
+				--destructive-foreground: 210 40% 98%;
+				--border: 217.2 32.6% 17.5%;
+				--input: 217.2 32.6% 17.5%;
+				--ring: 212.7 26.8% 83.9%;
+			}
+		}
+
+		* {
+			border-color: hsl(var(--border));
+		}
+
+		body {
+			background-color: hsl(var(--background));
+			color: hsl(var(--foreground));
+		}
+
+		/* shadcn Input styles */
+		.input {
+			display: flex;
+			height: 2.5rem;
+			width: 100%;
+			border-radius: calc(var(--radius) - 2px);
+			border: 1px solid hsl(var(--input));
+			background-color: hsl(var(--background));
+			padding: 0 0.75rem;
+			font-size: 0.875rem;
+			transition: all 0.2s;
+		}
+
+		.input:focus {
+			outline: none;
+			box-shadow: 0 0 0 2px hsl(var(--ring));
+		}
+
+		.input::placeholder {
+			color: hsl(var(--muted-foreground));
+		}
+
+		/* shadcn Card styles */
+		.card {
+			border-radius: calc(var(--radius) - 2px);
+			border: 1px solid hsl(var(--border));
+			background-color: hsl(var(--card));
+			color: hsl(var(--card-foreground));
+			box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+		}
+
+		.card-header {
+			display: flex;
+			flex-direction: column;
+			gap: 1.5rem;
+			padding: 1.5rem;
+		}
+
+		.card-title {
+			font-size: 1.5rem;
+			font-weight: 600;
+			line-height: 1;
+			letter-spacing: -0.025em;
+		}
+
+		.card-content {
+			padding: 1.5rem;
+			padding-top: 0;
+		}
+
+		/* Badge styles */
+		.badge {
+			display: inline-flex;
+			align-items: center;
+			border-radius: 9999px;
+			border: 1px solid hsl(var(--border));
+			background-color: hsl(var(--secondary));
+			color: hsl(var(--secondary-foreground));
+			padding: 0.25rem 0.625rem;
+			font-size: 0.75rem;
+			font-weight: 500;
+			transition: all 0.2s;
+			cursor: pointer;
+		}
+
+		.badge:hover {
+			background-color: hsl(var(--secondary) / 0.8);
+		}
+
+		.badge.active {
+			background-color: hsl(var(--primary));
+			color: hsl(var(--primary-foreground));
+			border-color: hsl(var(--primary));
+		}
+
+		/* Arabic text RTL */
+		.arabic {
+			direction: rtl;
+			text-align: right;
+			font-family: "Scheherazade New", serif;
+		}
+
+		/* shadcn Pagination styles */
+		.pagination {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 0.25rem;
+		}
+
+		.pagination-item {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			border-radius: calc(var(--radius) - 2px);
+			height: 2.5rem;
+			min-width: 2.5rem;
+			padding: 0 0.5rem;
+			font-size: 0.875rem;
+			font-weight: 500;
+			border: 1px solid hsl(var(--border));
+			background-color: hsl(var(--background));
+			color: hsl(var(--foreground));
+			transition: all 0.2s;
+			cursor: pointer;
+		}
+
+		.pagination-item:hover:not(.disabled):not(.active) {
+			background-color: hsl(var(--accent));
+			color: hsl(var(--accent-foreground));
+		}
+
+		.pagination-item.active {
+			background-color: hsl(var(--primary));
+			color: hsl(var(--primary-foreground));
+			border-color: hsl(var(--primary));
+		}
+
+		.pagination-item.disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+			pointer-events: none;
+		}
+
+		/* Dark mode toggle button */
+		.dark-mode-toggle {
+			border-color: hsl(var(--border));
+			background-color: hsl(var(--background));
+			color: hsl(var(--foreground));
+		}
+
+		.dark-mode-toggle:hover {
+			background-color: hsl(var(--accent));
+			color: hsl(var(--accent-foreground));
+		}
+	</style>
+</head>
+	<body class="min-h-screen">
+	<div class="container mx-auto px-4 py-8 max-w-7xl">
+		<!-- Application Name -->
+		<header class="mb-8 text-center relative">
+			<button
+				id="darkModeToggle"
+				class="dark-mode-toggle absolute top-0 right-0 inline-flex items-center justify-center rounded-md w-10 h-10 border transition-colors"
+				aria-label="Toggle dark mode"
+			>
+				<svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+					<circle cx="12" cy="12" r="4"></circle>
+					<path d="M12 2v2"></path>
+					<path d="M12 20v2"></path>
+					<path d="m4.93 4.93 1.41 1.41"></path>
+					<path d="m17.66 17.66 1.41 1.41"></path>
+					<path d="M2 12h2"></path>
+					<path d="M20 12h2"></path>
+					<path d="m6.34 17.66-1.41 1.41"></path>
+					<path d="m19.07 4.93-1.41 1.41"></path>
+				</svg>
+				<svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+				</svg>
+			</button>
+			<h1 class="text-4xl font-bold tracking-tight">Quran Dictionary</h1>
+			<p class="mt-2 opacity-80">Search and explore Quranic terminology</p>
+		</header>
+
+		<!-- Search Input -->
+		<div class="mb-6">
+			<div class="relative">
+				<div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="11" cy="11" r="8"></circle>
+						<path d="m21 21-4.35-4.35"></path>
+					</svg>
+				</div>
+				<input
+					type="text"
+					id="searchInput"
+					class="input pl-10"
+					placeholder="Search by Arabic term, transliteration, translation, or meaning..."
+				/>
+			</div>
+			<div id="resultsCount" class="mt-2 text-sm opacity-70">
+				<!-- Results count will be displayed here -->
+			</div>
+		</div>
+
+		<!-- Category Filter Badges -->
+		<div id="categoryFilters" class="mb-6 flex flex-wrap gap-2">
+			<!-- Categories will be dynamically inserted here -->
+		</div>
+
+		<!-- Results Grid -->
+		<div id="resultsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+			<!-- Dictionary items will be dynamically inserted here -->
+		</div>
+
+		<!-- Loading State -->
+		<div id="loadingState" class="text-center py-12 opacity-70">
+			Loading dictionary data...
+		</div>
+
+		<!-- Empty State -->
+		<div id="emptyState" class="text-center py-12 opacity-70 hidden">
+			No results found. Try adjusting your search or category filter.
+		</div>
+
+		<!-- Pagination -->
+		<div id="paginationContainer" class="mt-8 flex justify-center">
+			<!-- Pagination controls will be dynamically inserted here -->
+		</div>
+	</div>
+
+	<!-- Utility Scripts -->
+	<script src="utils-cache.js"></script>
+	<script src="utils-csv.js"></script>
+	<script src="utils-http.js"></script>
+	<script src="utils-offline.js"></script>
+	<script src="app.js"></script>
+</body>
+</html>
+
