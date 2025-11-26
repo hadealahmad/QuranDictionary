@@ -9,9 +9,9 @@
 	let filteredData = [];
 	let selectedCategories = new Set();
 	let searchQuery = '';
-	let currentPage = 1;
-	let isInitialLoad = true;
-	const ITEMS_PER_PAGE = 9;
+	let viewMode = 'grid';
+	let sortBy = 'arabic';
+	let sortOrder = 'asc';
 
 	const cache = window.SZ?.cache?.createCache('quran-dict');
 	const searchInput = document.getElementById('searchInput');
@@ -20,10 +20,14 @@
 	const loadingState = document.getElementById('loadingState');
 	const emptyState = document.getElementById('emptyState');
 	const resultsCount = document.getElementById('resultsCount');
-	const paginationContainer = document.getElementById('paginationContainer');
 	const darkModeToggle = document.getElementById('darkModeToggle');
+	const viewToggle = document.getElementById('viewToggle');
+	const resultsTableContainer = document.getElementById('resultsTableContainer');
 	const sunIcon = document.getElementById('sunIcon');
 	const moonIcon = document.getElementById('moonIcon');
+	const modal = document.getElementById('modal');
+	const modalBackdrop = document.getElementById('modalBackdrop');
+	const modalClose = document.getElementById('modalClose');
 
 	/**
 	 * Load dictionary data from cache or fetch from URL
@@ -58,11 +62,15 @@
 
 				// Normalize data structure
 				dictionaryData = parsed.map(item => ({
+					id: item['ID'] || '',
+					imageUrl: item['Image'] || '',
 					arabic: item['Arabic Term in Arabic'] || '',
 					transliteration: item['Transliteration'] || '',
 					translation: item['Translation in English'] || '',
 					meaning: item['Meaning in English'] || '',
-					category: item['Category of the Term'] || ''
+					arabicDescription: item['Meaning in Arabic'] || '',
+					category: item['Category of the Term'] || '',
+					color: item['color'] || item['Color'] || ''
 				})).filter(item => item.arabic || item.translation);
 
 				// Cache the data
@@ -96,8 +104,10 @@
 	function initializeApp() {
 		loadingState.classList.add('hidden');
 		initializeDarkMode();
+		initializeViewMode();
 		renderCategoryFilters();
 		parseURLParams();
+		updateSortButtons();
 		applyFilters();
 		setupEventListeners();
 	}
@@ -156,22 +166,7 @@
 		const urlCategories = params.get('category') || params.get('categories');
 		if (urlCategories) {
 			selectedCategories = new Set(urlCategories.split(',').filter(Boolean));
-			// Update badge states
-			document.querySelectorAll('[data-category]').forEach(badge => {
-				const category = badge.getAttribute('data-category');
-				if (selectedCategories.has(category)) {
-					badge.classList.add('active');
-				}
-			});
-		}
-		
-		// Get page number from URL
-		const urlPage = params.get('page');
-		if (urlPage) {
-			const pageNum = parseInt(urlPage, 10);
-			if (pageNum > 0) {
-				currentPage = pageNum;
-			}
+			// Update badge states (will be applied after renderCategoryFilters)
 		}
 	}
 
@@ -189,15 +184,19 @@
 			params.set('category', Array.from(selectedCategories).join(','));
 		}
 		
-		if (currentPage > 1) {
-			params.set('page', currentPage.toString());
-		}
-		
 		const newURL = params.toString() 
 			? `${window.location.pathname}?${params.toString()}`
 			: window.location.pathname;
 		
 		window.history.pushState({}, '', newURL);
+	}
+
+	/**
+	 * Get color for a category (returns first color found for that category)
+	 */
+	function getCategoryColor(category) {
+		const item = dictionaryData.find(d => d.category === category && d.color);
+		return item ? item.color : '';
 	}
 
 	/**
@@ -213,6 +212,22 @@
 			badge.className = 'badge';
 			badge.textContent = category;
 			badge.setAttribute('data-category', category);
+			
+			// Apply color if available
+			const color = getCategoryColor(category);
+			if (color) {
+				badge.style.borderColor = color;
+				badge.style.color = color;
+			}
+			
+			// If category is selected (from URL params), mark as active and maintain color
+			if (selectedCategories.has(category)) {
+				badge.classList.add('active');
+				if (color) {
+					badge.style.backgroundColor = 'transparent';
+				}
+			}
+			
 			badge.addEventListener('click', () => toggleCategory(category, badge));
 			categoryFilters.appendChild(badge);
 		});
@@ -222,13 +237,27 @@
 	 * Toggle category filter
 	 */
 	function toggleCategory(category, badgeElement) {
+		const color = getCategoryColor(category);
+		
 		if (selectedCategories.has(category)) {
 			selectedCategories.delete(category);
 			badgeElement.classList.remove('active');
+			// Restore original color when inactive
+			if (color) {
+				badgeElement.style.borderColor = color;
+				badgeElement.style.color = color;
+			}
 		} else {
 			selectedCategories.add(category);
 			badgeElement.classList.add('active');
+			// Maintain color when active
+			if (color) {
+				badgeElement.style.borderColor = color;
+				badgeElement.style.color = color;
+				badgeElement.style.backgroundColor = 'transparent';
+			}
 		}
+		
 		applyFilters();
 	}
 
@@ -277,34 +306,22 @@
 				removeTashkeel(item.arabic),
 				item.transliteration,
 				item.translation,
-				item.meaning
+				item.meaning,
+				removeTashkeel(item.arabicDescription)
 			].join(' ').toLowerCase();
 
 			return searchableText.includes(normalizedQuery);
 		});
 
-		// Reset to first page when filters change (but preserve page on initial load from URL)
-		if (isInitialLoad) {
-			// On initial load, check if page is set in URL
-			const params = new URLSearchParams(window.location.search);
-			if (!params.get('page')) {
-				currentPage = 1;
-			}
-			isInitialLoad = false;
-		} else {
-			// On subsequent filter changes, always reset to page 1
-			currentPage = 1;
-		}
+		applySort();
 		renderResults();
 		updateURL();
 	}
 
 	/**
-	 * Render dictionary entries as cards
+	 * Render dictionary entries based on view mode
 	 */
 	function renderResults() {
-		resultsContainer.innerHTML = '';
-
 		// Update results count
 		const totalCount = dictionaryData.length;
 		const filteredCount = filteredData.length;
@@ -318,199 +335,356 @@
 
 		if (filteredData.length === 0) {
 			emptyState.classList.remove('hidden');
-			paginationContainer.innerHTML = '';
+			resultsContainer.innerHTML = '';
+			if (resultsTableContainer) {
+				resultsTableContainer.innerHTML = '';
+			}
 			return;
 		}
 
 		emptyState.classList.add('hidden');
 
-		// Calculate pagination
-		const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
-		const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-		const endIndex = startIndex + ITEMS_PER_PAGE;
-		const paginatedData = filteredData.slice(startIndex, endIndex);
-
-		// Update results count with pagination info
-		if (resultsCount && totalPages > 1) {
-			resultsCount.textContent = `Showing ${startIndex + 1}-${Math.min(endIndex, filteredCount)} of ${filteredCount} ${filteredCount === 1 ? 'entry' : 'entries'} (Page ${currentPage} of ${totalPages})`;
+		if (viewMode === 'table') {
+			renderTableView();
+		} else {
+			renderGridView();
 		}
+	}
 
-		paginatedData.forEach(item => {
+	/**
+	 * Initialize view mode from localStorage or default to grid
+	 */
+	function initializeViewMode() {
+		const savedViewMode = localStorage.getItem('viewMode');
+		if (savedViewMode === 'table' || savedViewMode === 'grid') {
+			viewMode = savedViewMode;
+		} else {
+			viewMode = 'grid';
+		}
+		updateViewToggleButton();
+	}
+
+	/**
+	 * Toggle view mode between grid and table
+	 */
+	function toggleViewMode() {
+		viewMode = viewMode === 'grid' ? 'table' : 'grid';
+		localStorage.setItem('viewMode', viewMode);
+		updateViewToggleButton();
+		renderResults();
+	}
+
+	/**
+	 * Update view toggle button appearance
+	 */
+	function updateViewToggleButton() {
+		if (!viewToggle) return;
+		const gridIcon = viewToggle.querySelector('#gridIcon');
+		const tableIcon = viewToggle.querySelector('#tableIcon');
+		if (viewMode === 'grid') {
+			gridIcon?.classList.remove('hidden');
+			tableIcon?.classList.add('hidden');
+		} else {
+			gridIcon?.classList.add('hidden');
+			tableIcon?.classList.remove('hidden');
+		}
+	}
+
+	/**
+	 * Render dictionary entries as cards (grid view)
+	 */
+	function renderGridView() {
+		resultsContainer.innerHTML = '';
+		if (resultsTableContainer) {
+			resultsTableContainer.innerHTML = '';
+			resultsTableContainer.classList.add('hidden');
+		}
+		resultsContainer.classList.remove('hidden');
+
+		filteredData.forEach(item => {
 			const card = document.createElement('div');
-			card.className = 'card';
+			card.className = 'card cursor-pointer hover:shadow-lg transition-shadow';
+			
+			// Apply color border if available
+			if (item.color) {
+				card.style.borderColor = item.color;
+				card.style.borderWidth = '2px';
+			}
+			
+			card.addEventListener('click', () => openModal(item));
 
-			const cardHeader = document.createElement('div');
-			cardHeader.className = 'card-header';
+			// Image
+			if (item.imageUrl) {
+				const imageContainer = document.createElement('div');
+				imageContainer.className = 'w-full h-48 overflow-hidden rounded-t-lg';
+				const img = document.createElement('img');
+				img.src = item.imageUrl;
+				img.alt = item.arabic || item.translation || 'Dictionary entry';
+				img.className = 'w-full h-full object-cover';
+				img.onerror = function() {
+					this.style.display = 'none';
+					imageContainer.style.display = 'none';
+				};
+				imageContainer.appendChild(img);
+				card.appendChild(imageContainer);
+			}
+
+			const cardContent = document.createElement('div');
+			cardContent.className = 'card-content';
 
 			// Arabic term
 			if (item.arabic) {
 				const arabicTitle = document.createElement('h2');
 				arabicTitle.className = 'card-title arabic mb-2';
 				arabicTitle.textContent = item.arabic;
-				cardHeader.appendChild(arabicTitle);
+				cardContent.appendChild(arabicTitle);
 			}
-
-			// English translation (if different from Arabic)
-			if (item.translation && item.translation !== item.arabic) {
-				const translationTitle = document.createElement('h3');
-				translationTitle.className = 'text-lg font-semibold mb-2';
-				translationTitle.textContent = item.translation;
-				cardHeader.appendChild(translationTitle);
-			}
-
-			card.appendChild(cardHeader);
-
-			const cardContent = document.createElement('div');
-			cardContent.className = 'card-content';
 
 			// Transliteration
 			if (item.transliteration) {
 				const transliteration = document.createElement('p');
-				transliteration.className = 'text-sm italic mb-3 opacity-70';
+				transliteration.className = 'text-sm italic mb-2 opacity-70';
 				transliteration.textContent = item.transliteration;
 				cardContent.appendChild(transliteration);
 			}
 
-			// Meaning
-			if (item.meaning) {
-				const meaning = document.createElement('p');
-				meaning.className = 'text-sm leading-relaxed mb-3';
-				meaning.textContent = item.meaning;
-				cardContent.appendChild(meaning);
+			// Translation
+			if (item.translation) {
+				const translation = document.createElement('p');
+				translation.className = 'text-base font-semibold';
+				translation.textContent = item.translation;
+				cardContent.appendChild(translation);
 			}
 
-			// Category badge
+			card.appendChild(cardContent);
+			resultsContainer.appendChild(card);
+		});
+	}
+
+	/**
+	 * Render dictionary entries as table (table view)
+	 */
+	function renderTableView() {
+		if (resultsContainer) {
+			resultsContainer.innerHTML = '';
+			resultsContainer.classList.add('hidden');
+		}
+		if (!resultsTableContainer) return;
+
+		resultsTableContainer.innerHTML = '';
+		resultsTableContainer.classList.remove('hidden');
+
+		const table = document.createElement('table');
+		table.className = 'results-table';
+
+		// Table header
+		const thead = document.createElement('thead');
+		const headerRow = document.createElement('tr');
+		const headers = ['Image', 'Arabic Term', 'Transliteration', 'Translation', 'Meaning', 'Category', 'Arabic Description'];
+		headers.forEach(headerText => {
+			const th = document.createElement('th');
+			th.textContent = headerText;
+			headerRow.appendChild(th);
+		});
+		thead.appendChild(headerRow);
+		table.appendChild(thead);
+
+		// Table body
+		const tbody = document.createElement('tbody');
+		filteredData.forEach(item => {
+			const row = document.createElement('tr');
+
+			// Image
+			const imageCell = document.createElement('td');
+			if (item.imageUrl) {
+				const img = document.createElement('img');
+				img.src = item.imageUrl;
+				img.alt = item.arabic || item.translation || '';
+				img.className = 'w-16 h-16 object-cover rounded';
+				img.onerror = function() {
+					this.style.display = 'none';
+				};
+				imageCell.appendChild(img);
+			}
+			row.appendChild(imageCell);
+
+			// Arabic term
+			const arabicCell = document.createElement('td');
+			if (item.arabic) {
+				arabicCell.className = 'arabic';
+				arabicCell.textContent = item.arabic;
+			}
+			row.appendChild(arabicCell);
+
+			// Transliteration
+			const transliterationCell = document.createElement('td');
+			transliterationCell.className = 'italic opacity-70';
+			transliterationCell.textContent = item.transliteration || '';
+			row.appendChild(transliterationCell);
+
+			// Translation
+			const translationCell = document.createElement('td');
+			translationCell.textContent = item.translation || '';
+			row.appendChild(translationCell);
+
+			// Meaning
+			const meaningCell = document.createElement('td');
+			meaningCell.textContent = item.meaning || '';
+			row.appendChild(meaningCell);
+
+			// Category
+			const categoryCell = document.createElement('td');
 			if (item.category) {
 				const categoryBadge = document.createElement('span');
 				categoryBadge.className = 'badge text-xs';
 				categoryBadge.textContent = item.category;
 				categoryBadge.style.cursor = 'default';
 				categoryBadge.style.pointerEvents = 'none';
-				cardContent.appendChild(categoryBadge);
+				
+				// Apply color if available
+				if (item.color) {
+					categoryBadge.style.borderColor = item.color;
+					categoryBadge.style.color = item.color;
+				}
+				
+				categoryCell.appendChild(categoryBadge);
 			}
+			row.appendChild(categoryCell);
 
-			card.appendChild(cardContent);
-			resultsContainer.appendChild(card);
+			// Arabic Description
+			const arabicDescCell = document.createElement('td');
+			if (item.arabicDescription) {
+				arabicDescCell.className = 'arabic';
+				arabicDescCell.textContent = item.arabicDescription;
+			}
+			row.appendChild(arabicDescCell);
+
+			tbody.appendChild(row);
 		});
-
-		// Render pagination
-		renderPagination(totalPages);
+		table.appendChild(tbody);
+		resultsTableContainer.appendChild(table);
 	}
 
 	/**
-	 * Render pagination controls
+	 * Apply sorting to filtered data
 	 */
-	function renderPagination(totalPages) {
-		if (totalPages <= 1) {
-			paginationContainer.innerHTML = '';
-			return;
-		}
+	function applySort() {
+		filteredData.sort((a, b) => {
+			let aVal, bVal;
 
-		paginationContainer.innerHTML = '';
-		const pagination = document.createElement('nav');
-		pagination.className = 'pagination';
-		pagination.setAttribute('aria-label', 'Pagination');
+			switch (sortBy) {
+				case 'arabic':
+					aVal = removeTashkeel(a.arabic || '').toLowerCase();
+					bVal = removeTashkeel(b.arabic || '').toLowerCase();
+					break;
+				case 'translation':
+					aVal = (a.translation || '').toLowerCase();
+					bVal = (b.translation || '').toLowerCase();
+					break;
+				case 'category':
+					aVal = (a.category || '').toLowerCase();
+					bVal = (b.category || '').toLowerCase();
+					break;
+				default:
+					return 0;
+			}
 
-		// Previous button
-		const prevButton = document.createElement('button');
-		prevButton.className = 'pagination-item';
-		prevButton.textContent = 'Previous';
-		if (currentPage === 1) {
-			prevButton.classList.add('disabled');
+			if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+			if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+
+	/**
+	 * Handle sort button click
+	 */
+	function handleSort(sortField) {
+		if (sortBy === sortField) {
+			// Toggle order if same field
+			sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+		} else {
+			// New field, default to ascending
+			sortBy = sortField;
+			sortOrder = 'asc';
 		}
-		prevButton.addEventListener('click', () => {
-			if (currentPage > 1) {
-				currentPage--;
-				renderResults();
-				updateURL();
-				window.scrollTo({ top: 0, behavior: 'smooth' });
+		updateSortButtons();
+		applySort();
+		renderResults();
+	}
+
+	/**
+	 * Update sort button active states
+	 */
+	function updateSortButtons() {
+		const sortButtons = document.querySelectorAll('[data-sort]');
+		sortButtons.forEach(button => {
+			const field = button.getAttribute('data-sort');
+			if (field === sortBy) {
+				button.classList.add('active');
+				// Update button text to show order
+				const orderIcon = button.querySelector('.sort-order');
+				if (orderIcon) {
+					orderIcon.textContent = sortOrder === 'asc' ? '↑' : '↓';
+				}
+			} else {
+				button.classList.remove('active');
 			}
 		});
-		pagination.appendChild(prevButton);
+	}
 
-		// Page numbers
-		const maxVisiblePages = 5;
-		let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-		let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+	/**
+	 * Open modal with item details
+	 */
+	function openModal(item) {
+		if (!modal) return;
 
-		if (endPage - startPage < maxVisiblePages - 1) {
-			startPage = Math.max(1, endPage - maxVisiblePages + 1);
-		}
+		// Populate modal content
+		const modalImage = document.getElementById('modalImage');
+		const modalArabic = document.getElementById('modalArabic');
+		const modalTransliteration = document.getElementById('modalTransliteration');
+		const modalTranslation = document.getElementById('modalTranslation');
+		const modalMeaning = document.getElementById('modalMeaning');
+		const modalCategory = document.getElementById('modalCategory');
+		const modalArabicDesc = document.getElementById('modalArabicDesc');
 
-		if (startPage > 1) {
-			const firstPage = document.createElement('button');
-			firstPage.className = 'pagination-item';
-			firstPage.textContent = '1';
-			firstPage.addEventListener('click', () => {
-				currentPage = 1;
-				renderResults();
-				updateURL();
-				window.scrollTo({ top: 0, behavior: 'smooth' });
-			});
-			pagination.appendChild(firstPage);
-
-			if (startPage > 2) {
-				const ellipsis = document.createElement('span');
-				ellipsis.className = 'pagination-item disabled';
-				ellipsis.textContent = '...';
-				pagination.appendChild(ellipsis);
+		if (modalImage) {
+			if (item.imageUrl) {
+				modalImage.src = item.imageUrl;
+				modalImage.style.display = 'block';
+				modalImage.onerror = function() {
+					this.style.display = 'none';
+				};
+			} else {
+				modalImage.style.display = 'none';
 			}
 		}
 
-		for (let i = startPage; i <= endPage; i++) {
-			const pageButton = document.createElement('button');
-			pageButton.className = 'pagination-item';
-			if (i === currentPage) {
-				pageButton.classList.add('active');
+		if (modalArabic) modalArabic.textContent = item.arabic || '';
+		if (modalTransliteration) modalTransliteration.textContent = item.transliteration || '';
+		if (modalTranslation) modalTranslation.textContent = item.translation || '';
+		if (modalMeaning) modalMeaning.textContent = item.meaning || '';
+		if (modalCategory) {
+			if (item.category) {
+				modalCategory.textContent = item.category;
+				modalCategory.style.display = 'inline-block';
+			} else {
+				modalCategory.style.display = 'none';
 			}
-			pageButton.textContent = i.toString();
-			pageButton.addEventListener('click', () => {
-				currentPage = i;
-				renderResults();
-				updateURL();
-				window.scrollTo({ top: 0, behavior: 'smooth' });
-			});
-			pagination.appendChild(pageButton);
 		}
+		if (modalArabicDesc) modalArabicDesc.textContent = item.arabicDescription || '';
 
-		if (endPage < totalPages) {
-			if (endPage < totalPages - 1) {
-				const ellipsis = document.createElement('span');
-				ellipsis.className = 'pagination-item disabled';
-				ellipsis.textContent = '...';
-				pagination.appendChild(ellipsis);
-			}
+		// Show modal
+		modal.classList.remove('hidden');
+		document.body.style.overflow = 'hidden';
+	}
 
-			const lastPage = document.createElement('button');
-			lastPage.className = 'pagination-item';
-			lastPage.textContent = totalPages.toString();
-			lastPage.addEventListener('click', () => {
-				currentPage = totalPages;
-				renderResults();
-				updateURL();
-				window.scrollTo({ top: 0, behavior: 'smooth' });
-			});
-			pagination.appendChild(lastPage);
-		}
-
-		// Next button
-		const nextButton = document.createElement('button');
-		nextButton.className = 'pagination-item';
-		nextButton.textContent = 'Next';
-		if (currentPage === totalPages) {
-			nextButton.classList.add('disabled');
-		}
-		nextButton.addEventListener('click', () => {
-			if (currentPage < totalPages) {
-				currentPage++;
-				renderResults();
-				updateURL();
-				window.scrollTo({ top: 0, behavior: 'smooth' });
-			}
-		});
-		pagination.appendChild(nextButton);
-
-		paginationContainer.appendChild(pagination);
+	/**
+	 * Close modal
+	 */
+	function closeModal() {
+		if (!modal) return;
+		modal.classList.add('hidden');
+		document.body.style.overflow = '';
 	}
 
 	/**
@@ -527,6 +701,36 @@
 		if (darkModeToggle) {
 			darkModeToggle.addEventListener('click', toggleDarkMode);
 		}
+
+		// View toggle
+		if (viewToggle) {
+			viewToggle.addEventListener('click', toggleViewMode);
+		}
+
+		// Sort buttons
+		const sortButtons = document.querySelectorAll('[data-sort]');
+		sortButtons.forEach(button => {
+			button.addEventListener('click', () => {
+				const sortField = button.getAttribute('data-sort');
+				handleSort(sortField);
+			});
+		});
+
+		// Modal close
+		if (modalClose) {
+			modalClose.addEventListener('click', closeModal);
+		}
+
+		if (modalBackdrop) {
+			modalBackdrop.addEventListener('click', closeModal);
+		}
+
+		// Close modal on Escape key
+		document.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+				closeModal();
+			}
+		});
 
 		// Handle browser back/forward navigation
 		window.addEventListener('popstate', () => {
